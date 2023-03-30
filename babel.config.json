@@ -1,0 +1,28 @@
+{
+  "presets": [
+    [
+      "@babel/env",
+      {
+        "targets": {
+          "node": "16"
+        }
+      }
+    ],
+    "@babel/typescript"
+  ],
+  "plugins": [
+    ["@babel/transform-typescript", { "allowDeclareFields": true }],
+    ["@babel/proposal-class-properties", { "loose": true }],
+    ["@babel/proposal-private-property-in-object", { "loose": true }],
+    [
+      "module-resolver",
+      {
+        "root": ["."],
+        "alias": {
+          "@": ["./src"]
+        },
+        "extensions": [".ts"]
+      }
+    ]
+  ]
+}

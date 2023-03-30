@@ -1,0 +1,112 @@
+{
+  "env": {
+    "es2020": true,
+    "node": true
+  },
+  "extends": [
+    "eslint:recommended",
+    "airbnb-base",
+    "airbnb-typescript/base",
+    "plugin:import/errors",
+    "plugin:import/warnings",
+    "plugin:import/typescript",
+    "plugin:@typescript-eslint/recommended",
+    "plugin:sonarjs/recommended",
+    "plugin:prettier/recommended"
+  ],
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 2020,
+    "sourceType": "module",
+    "project": "./tsconfig.json"
+  },
+  "plugins": ["@typescript-eslint", "sonarjs"],
+  "rules": {
+    "curly": ["error", "all"],
+    "no-empty": ["error", { "allowEmptyCatch": true }],
+    "no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+    "no-return-assign": ["error", "except-parens"],
+    "func-names": ["error", "never"],
+    "no-void": ["error", { "allowAsStatement": true }],
+    "no-param-reassign": [
+      "error",
+      { "props": true, "ignorePropertyModificationsFor": ["err", "acc", "res"] }
+    ],
+    "sort-imports": ["error", { "ignoreDeclarationSort": true }],
+    "require-await": ["error"],
+    "padding-line-between-statements": ["off"],
+    "max-classes-per-file": ["error", 2],
+    "no-promise-executor-return": ["off"],
+    "import/order": [
+      "error",
+      {
+        "groups": ["builtin", "external", "internal"],
+        "newlines-between": "always",
+        "alphabetize": { "order": "asc", "caseInsensitive": true }
+      }
+    ],
+    "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+    "@typescript-eslint/no-use-before-define": ["error", { "functions": false }],
+    "@typescript-eslint/no-this-alias": ["error", { "allowedNames": ["that"] }],
+    "@typescript-eslint/no-floating-promises": ["error", { "ignoreIIFE": true }],
+    "@typescript-eslint/member-ordering": ["error"],
+    "@typescript-eslint/padding-line-between-statements": [
+      "error",
+      { "blankLine": "always", "prev": "*", "next": "return" },
+      { "blankLine": "always", "prev": "*", "next": ["const", "let", "var", "export"] },
+      { "blankLine": "always", "prev": ["const", "let", "var", "export"], "next": "*" },
+      { "blankLine": "any", "prev": ["const", "let", "var"], "next": ["const", "let", "var"] },
+      { "blankLine": "always", "prev": "directive", "next": "*" },
+      { "blankLine": "any", "prev": "directive", "next": "directive" },
+      {
+        "blankLine": "always",
+        "prev": "*",
+        "next": ["class", "function", "if", "switch", "for", "do", "while", "try", "throw"]
+      },
+      {
+        "blankLine": "always",
+        "prev": ["class", "function", "if", "switch", "for", "do", "while", "try", "throw"],
+        "next": "*"
+      },
+      { "blankLine": "never", "prev": ["if"], "next": ["if"] },
+      { "blankLine": "always", "prev": "*", "next": ["interface", "type"] },
+      { "blankLine": "always", "prev": ["multiline-const", "multiline-expression"], "next": "*" }
+    ],
+    "@typescript-eslint/lines-between-class-members": [
+      "error",
+      "always",
+      { "exceptAfterSingleLine": true }
+    ]
+  },
+  "settings": {
+    "import/resolver": {
+      "typescript": {}
+    },
+    "import/core-modules": ["express-serve-static-core"]
+  },
+  "overrides": [
+    {
+      "files": ["*.ts"],
+      "excludedFiles": "test/**/*.ts",
+      "rules": {
+        "@typescript-eslint/explicit-module-boundary-types": ["error"]
+      }
+    },
+    {
+      "files": ["index.ts"],
+      "rules": {
+        "@typescript-eslint/padding-line-between-statements": [
+          "error",
+          { "blankLine": "never", "prev": "export", "next": "export" }
+        ]
+      }
+    },
+    {
+      "files": ["**/__tests__/**/*.ts", "**/?(*.)+(spec|test).ts"],
+      "rules": {
+        "sonarjs/no-duplicate-string": "off",
+        "sonarjs/no-identical-functions": "off"
+      }
+    }
+  ]
+}
