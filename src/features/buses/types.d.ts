@@ -45,6 +45,11 @@ declare global {
       bus: BusArrivalInfo;
       stop: StopInfo;
     }
+
+    interface StopArrivalInfo {
+      stop: StopInfo;
+      buses: BusArrivalInfo[];
+    }
   }
 }
 

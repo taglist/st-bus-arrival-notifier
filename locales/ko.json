@@ -1,0 +1,11 @@
+{
+  "pages.mainPage.name": "버스 도착 알리미",
+  "pages.mainPage.sections.devices.name": "기기 설정",
+  "pages.mainPage.settings.notifier.name": "알리미 선택",
+  "pages.mainPage.settings.speakers.name": "스피커 선택",
+
+  "pages.mainPage.sections.busInfo.name": "버스 정보",
+  "pages.mainPage.settings.cityNumber.name": "지역 코드",
+  "pages.mainPage.settings.stopCode.name": "정류장 아이디",
+  "pages.mainPage.settings.routeCodes.name": "노선 아이디"
+}

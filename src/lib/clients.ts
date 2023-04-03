@@ -18,7 +18,22 @@ export const tago = axios.create(CLIENTS.tago);
 
 tago.interceptors.response.use(
   res => {
-    return typeof res.data === 'object' ? Promise.resolve(res) : Promise.reject(res);
+    if (typeof res.data !== 'object') {
+      return Promise.reject(res);
+    }
+
+    const resultCode = res.data.response?.header?.resultCode;
+
+    if (resultCode === '00') {
+      return Promise.resolve(res);
+    }
+    if (resultCode === '20' || resultCode === '99') {
+      const error = new errors.Forbidden('Service access denied');
+
+      return Promise.reject(error);
+    }
+
+    return Promise.reject(res);
   },
   err => {
     console.error(err);

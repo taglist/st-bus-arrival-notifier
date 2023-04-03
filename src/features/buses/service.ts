@@ -70,7 +70,7 @@ export default class BusService {
   static async retrieveArrivalInfo(
     cityNumber: number,
     stopCode: string,
-  ): Promise<Types.BusArrivalInfo[]> {
+  ): Promise<Types.StopArrivalInfo> {
     const params = {
       cityCode: cityNumber,
       nodeId: stopCode,
@@ -78,7 +78,14 @@ export default class BusService {
 
     const arrivalInfo = await tago.fetchArrivalInfoByStop(params);
 
-    return arrivalInfo.map(info => info.bus);
+    if (!arrivalInfo.length) {
+      return {} as Types.StopArrivalInfo;
+    }
+
+    return {
+      stop: arrivalInfo[0].stop,
+      buses: arrivalInfo.map(info => info.bus),
+    };
   }
 
   static async retrieveBusLocations(
