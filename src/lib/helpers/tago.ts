@@ -1,5 +1,6 @@
 /* eslint-disable no-console */
 import * as errors from '@taglist/errors';
+import type { AxiosResponse } from 'axios';
 import { type } from 'ryutils';
 
 import { tago } from '../clients';
@@ -211,6 +212,17 @@ function convertArrivalInfo(arrivalInfo: Types.TagoArrivalInfo): Types.ArrivalIn
 
 function ensureNoXmlData(val: unknown) {
   if (type.isObject(val) && Object.hasOwn(val, 'data')) {
-    throw new errors.Unauthorized('Service key not registered');
+    console.error(val);
+
+    const { data } = val as AxiosResponse;
+
+    if (data.includes('SERVICE_KEY')) {
+      throw new errors.Unauthorized('Service key not registered');
+    }
+    if (data.includes('SERVICE')) {
+      throw new errors.Forbidden('Service access denied');
+    }
+
+    throw new errors.ServiceUnavailable('Tago');
   }
 }

@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
+import { MINUTE_IN_SECONDS } from '@taglist/constants';
 import dotenv from 'dotenv';
 
 const result = dotenv.config();
@@ -17,12 +18,15 @@ const envConfig = dotenv.parse(fs.readFileSync(envPath));
 Object.assign(process.env, envConfig);
 
 export const APP = {
-  port: +process.env.APP_PORT || 3000,
+  port: +(process.env.APP_PORT ?? 3000),
 } as const;
 
 export const PROVIDERS = {
   tago: {
-    url: process.env.OPEN_API_URL,
     key: process.env.OPEN_API_KEY,
   },
+} as const;
+
+export const BUSES = {
+  minTime: +(process.env.BUS_MIN_TIME ?? 5) * MINUTE_IN_SECONDS,
 } as const;

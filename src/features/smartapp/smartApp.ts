@@ -1,55 +1,60 @@
 import { SmartApp } from '@smartthings/smartapp';
 
-import { CAPABILITIES } from '@/config';
+import { CAPABILITIES, NODE_ENV, SCHEDULES } from '@/config';
 
 import * as handlers from './handlers';
 
 const smartApp = new SmartApp()
-  .enableEventLogging(2)
   .configureI18n()
   .page('mainPage', (_, page) => {
     page.section('devices', section => {
       section
         .deviceSetting('notifier')
-        .name('Select notifier')
         .capabilities([CAPABILITIES.firstRemainingTime, CAPABILITIES.secondRemainingTime])
         .required(true)
         .permissions('rx');
 
       section
         .deviceSetting('speakers')
-        .name('Select speakers')
         .capability(CAPABILITIES.speechSynthesis)
         .multiple(true)
         .permissions('x');
     });
 
     page.section('busInfo', section => {
-      section.numberSetting('cityNumber').name('cityNumber').required(true);
-      section.textSetting('stopCode').name('stopCode').required(true);
-      section.textSetting('routeCodes').name('routeCodes').required(true);
+      section.numberSetting('cityNumber').required(true);
+      section.textSetting('stopCode').required(true);
+      section.textSetting('routeCodes').required(true);
     });
   })
 
-  .updated(async context => {
-    await context.api.subscriptions.delete();
-    await context.api.schedules.delete();
+  .updated(async ctx => {
+    await ctx.api.subscriptions.delete();
+    await ctx.api.schedules.delete();
     await Promise.all([
-      context.api.subscriptions.subscribeToDevices(
-        context.config.notifier,
+      ctx.api.subscriptions.subscribeToDevices(
+        ctx.config.notifier,
         'switch',
         'switch.on',
         'onHandler',
       ),
-      context.api.subscriptions.subscribeToDevices(
-        context.config.notifier,
+      ctx.api.subscriptions.subscribeToDevices(
+        ctx.config.notifier,
         'switch',
         'switch.off',
         'offHandler',
       ),
     ]);
+
+    await ctx.api.devices.sendCommand(handlers.getNotifier(ctx), 'switch', 'off');
   })
   .subscribedEventHandler('onHandler', handlers.handleOn)
-  .subscribedEventHandler('offHandler', handlers.handleOff);
+  .subscribedEventHandler('offHandler', handlers.handleOff)
+  .scheduledEventHandler(SCHEDULES.update, handlers.handleUpdate)
+  .scheduledEventHandler(SCHEDULES.notifications, handlers.handleNotifications);
+
+if (NODE_ENV === 'development') {
+  smartApp.enableEventLogging(2);
+}
 
 export default smartApp;
