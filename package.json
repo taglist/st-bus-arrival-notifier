@@ -1,6 +1,6 @@
 {
   "name": "st-bus-arrival-notifier",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "SmartApp for SmartThings that sends bus arrival notifications",
   "main": "dist/index.js",
   "repository": "https://github.com/taglist/st-bus-arrival-notifier.git",
@@ -60,6 +60,7 @@
     "jest-matcher-utils": "^29.5.0",
     "prettier": "^2.8.7",
     "rimraf": "^4.4.1",
+    "standard-version": "^9.5.0",
     "supertest": "^6.3.3",
     "ts-essentials": "^9.3.1",
     "ts-jest": "^29.0.5",
