@@ -10,7 +10,7 @@ All notable changes to this project will be documented in this file. See [standa
 * **smartapp:** add handlers for schedules ([75945bc](https://github.com/taglist/st-bus-arrival-notifier/commit/75945bccf0a55fd7a15008ac0cecad4045a4a871))
 * **smartapp:** add handlers for switch events ([e8e8b80](https://github.com/taglist/st-bus-arrival-notifier/commit/e8e8b80904da57eb335308ec1018cf5314a7065b))
 
-## 1.0.0 (2023-03-30)
+## 0.1.0 (2023-03-30)
 
 
 ### Features
