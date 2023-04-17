@@ -13,9 +13,12 @@ if (result.error) {
 export const NODE_ENV = process.env.NODE_ENV || 'development';
 
 const envPath = path.resolve(process.cwd(), `.env.${NODE_ENV}`);
-const envConfig = dotenv.parse(fs.readFileSync(envPath));
 
-Object.assign(process.env, envConfig);
+try {
+  const envConfig = dotenv.parse(fs.readFileSync(envPath));
+
+  Object.assign(process.env, envConfig);
+} catch {}
 
 export const APP = {
   port: +(process.env.APP_PORT ?? 3000),
