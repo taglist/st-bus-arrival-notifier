@@ -21,7 +21,7 @@ try {
 } catch {}
 
 export const APP = {
-  port: +(process.env.APP_PORT || 3000),
+  port: +process.env.APP_PORT || 3000,
 } as const;
 
 export const PROVIDERS = {
@@ -31,5 +31,6 @@ export const PROVIDERS = {
 } as const;
 
 export const BUSES = {
-  minTime: +(process.env.BUS_MIN_TIME || 5) * MINUTE_IN_SECONDS,
+  minTime: (+process.env.BUS_MIN_TIME || 5) * MINUTE_IN_SECONDS,
+  thresholdTime: (+process.env.BUS_THRESHOLD_TIME || 3) * MINUTE_IN_SECONDS,
 } as const;

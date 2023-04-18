@@ -4,6 +4,7 @@ declare namespace NodeJS {
     readonly APP_PORT: string;
     readonly OPEN_API_KEY: string;
     readonly BUS_MIN_TIME: string;
+    readonly BUS_THRESHOLD_TIME: string;
   }
 }
 

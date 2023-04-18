@@ -1,10 +1,11 @@
 import { SmartApp } from '@smartthings/smartapp';
 
-import { CAPABILITIES, NODE_ENV, SCHEDULES } from '@/config';
+import { CAPABILITIES, SCHEDULES } from '@/config';
 
 import * as handlers from './handlers';
 
 const smartApp = new SmartApp()
+  .enableEventLogging(2)
   .configureI18n()
   .page('mainPage', (_, page) => {
     page.section('devices', section => {
@@ -52,9 +53,5 @@ const smartApp = new SmartApp()
   .subscribedEventHandler('offHandler', handlers.handleOff)
   .scheduledEventHandler(SCHEDULES.update, handlers.handleUpdate)
   .scheduledEventHandler(SCHEDULES.notifications, handlers.handleNotifications);
-
-if (NODE_ENV === 'development') {
-  smartApp.enableEventLogging(2);
-}
 
 export default smartApp;

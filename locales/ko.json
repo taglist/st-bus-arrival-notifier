@@ -7,5 +7,7 @@
   "pages.mainPage.sections.busInfo.name": "버스 정보",
   "pages.mainPage.settings.cityNumber.name": "지역 코드",
   "pages.mainPage.settings.stopCode.name": "정류장 아이디",
-  "pages.mainPage.settings.routeCodes.name": "노선 아이디"
+  "pages.mainPage.settings.routeCodes.name": "노선 아이디",
+
+  "Tap to set": "입력"
 }
