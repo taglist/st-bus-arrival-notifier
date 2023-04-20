@@ -11,4 +11,12 @@ export default {
     },
     timeout: 7 * SECOND_IN_MS,
   },
+  seoulBus: {
+    baseURL: 'http://ws.bus.go.kr/api/rest',
+    params: {
+      resultType: 'json',
+      serviceKey: PROVIDERS.seoulBus.key,
+    },
+    timeout: 7 * SECOND_IN_MS,
+  },
 };

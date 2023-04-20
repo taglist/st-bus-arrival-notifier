@@ -13,7 +13,6 @@ axios.interceptors.response.use(
   },
 );
 
-// eslint-disable-next-line import/prefer-default-export
 export const tago = axios.create(CLIENTS.tago);
 
 tago.interceptors.response.use(
@@ -39,7 +38,46 @@ tago.interceptors.response.use(
     console.error(err);
 
     if (axios.isAxiosError(err)) {
-      return Promise.reject(new errors.ServiceUnavailable('Tago'));
+      const error = new errors.ServiceUnavailable('Tago');
+
+      return Promise.reject(error);
+    }
+
+    return Promise.reject(err);
+  },
+);
+
+export const seoulBus = axios.create(CLIENTS.seoulBus);
+
+seoulBus.interceptors.response.use(
+  res => {
+    if (typeof res.data !== 'object') {
+      return Promise.reject(res);
+    }
+
+    const resultCode = res.data.msgHeader?.headerCd;
+
+    if (resultCode === '0') {
+      return Promise.resolve(res);
+    }
+    if (resultCode === '7') {
+      const error = new errors.Unauthorized('Service key not registered');
+
+      return Promise.reject(error);
+    }
+    if (resultCode === '8') {
+      const error = new errors.RequestLimitExceeded('Daily');
+
+      return Promise.reject(error);
+    }
+
+    return Promise.reject(res);
+  },
+  err => {
+    console.error(err);
+
+    if (axios.isAxiosError(err)) {
+      return Promise.reject(new errors.ServiceUnavailable('Seoul bus'));
     }
 
     return Promise.reject(err);

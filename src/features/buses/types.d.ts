@@ -10,10 +10,25 @@ declare global {
       number?: number;
     }
 
+    type BusRouteType =
+      | '공항'
+      | '마을'
+      | '간선'
+      | '지선'
+      | '순환'
+      | '광역'
+      | '인천'
+      | '경기'
+      | '폐지'
+      | '공용'
+      // TAGO bus
+      | '좌석'
+      | '일반';
+
     interface BusRoute {
       code: string;
       name: string;
-      type: TagoRouteType;
+      type: BusRouteType;
     }
 
     interface SequentialStop extends BusStop {
@@ -35,8 +50,10 @@ declare global {
       route: BusRouteInfo;
     }
 
+    type BusVehicleType = '일반버스' | '저상버스' | '굴절버스' | '경기도버스';
+
     interface BusArrivalInfo extends BusRoute {
-      vehicleType: TagoBusType;
+      vehicleType: BusVehicleType;
       remainingStopCount: number;
       arrivalTime: number;
     }

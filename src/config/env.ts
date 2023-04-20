@@ -28,6 +28,9 @@ export const PROVIDERS = {
   tago: {
     key: process.env.OPEN_API_KEY,
   },
+  seoulBus: {
+    key: process.env.OPEN_API_KEY,
+  },
 } as const;
 
 export const BUSES = {

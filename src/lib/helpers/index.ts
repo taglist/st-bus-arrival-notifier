@@ -1,2 +1,2 @@
-// eslint-disable-next-line import/prefer-default-export
+export * as seoulBus from './seoulBus';
 export * as tago from './tago';

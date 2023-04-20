@@ -66,8 +66,20 @@ function convertRoute(route: Types.TagoRoute): Types.BusRoute {
   return {
     code: route.routeid,
     name: `${route.routeno}`,
-    type: route.routetp,
+    type: toRouteType(route.routetp),
   };
+}
+
+const routeTypes = {
+  공항버스: '공항',
+  좌석버스: '좌석',
+  일반버스: '일반',
+  지선버스: '지선',
+  마을버스: '마을',
+};
+
+function toRouteType(typeName: Types.TagoRouteType) {
+  return routeTypes[typeName] as Types.BusRouteType;
 }
 
 // https://www.data.go.kr/tcs/dss/selectApiDataDetailView.do?publicDataPk=15098529
@@ -156,7 +168,7 @@ function convertBusLocation(busLocation: Types.TagoBusLocation): Types.BusLocati
     },
     route: {
       name: busLocation.routenm,
-      type: busLocation.routetp,
+      type: toRouteType(busLocation.routetp),
       vehicleNumber: busLocation.vehicleno,
     },
   };
@@ -198,7 +210,7 @@ function convertArrivalInfo(arrivalInfo: Types.TagoArrivalInfo): Types.ArrivalIn
     bus: {
       code: arrivalInfo.routeid,
       name: `${arrivalInfo.routeno}`,
-      type: arrivalInfo.routetp,
+      type: toRouteType(arrivalInfo.routetp),
       vehicleType: arrivalInfo.vehicletp,
       remainingStopCount: arrivalInfo.arrprevstationcnt,
       arrivalTime: arrivalInfo.arrtime,
