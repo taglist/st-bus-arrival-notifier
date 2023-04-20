@@ -1,11 +1,12 @@
 import { SmartApp } from '@smartthings/smartapp';
 
-import { CAPABILITIES, SCHEDULES } from '@/config';
+import { CAPABILITIES, NODE_ENV, SCHEDULES } from '@/config';
 
 import * as handlers from './handlers';
+import * as app from './helpers/app';
 
 const smartApp = new SmartApp()
-  .enableEventLogging(2)
+  .enableEventLogging(2, NODE_ENV === 'development')
   .configureI18n()
   .page('mainPage', (_, page) => {
     page.section('devices', section => {
@@ -47,7 +48,7 @@ const smartApp = new SmartApp()
       ),
     ]);
 
-    await ctx.api.devices.sendCommand(handlers.getNotifier(ctx), 'switch', 'off');
+    await ctx.api.devices.sendCommand(app.getNotifier(ctx), 'switch', 'off');
   })
   .subscribedEventHandler('onHandler', handlers.handleOn)
   .subscribedEventHandler('offHandler', handlers.handleOff)

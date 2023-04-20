@@ -1,56 +1,29 @@
-import type * as st from '@smartthings/core-sdk';
-import { SmartAppContext } from '@smartthings/smartapp';
-import { MINUTE_IN_SECONDS, SECOND_IN_MS, STATUS_CODES } from '@taglist/constants';
+import type { SmartAppContext } from '@smartthings/smartapp';
+import { MINUTE_IN_SECONDS, STATUS_CODES } from '@taglist/constants';
 import * as errors from '@taglist/errors';
-import type { Dictionary } from '@taglist/types';
-import low from 'lowdb';
-import FileSync from 'lowdb/adapters/FileSync';
-import moment from 'moment';
-import { object } from 'ryutils';
 
-import { BUSES, CAPABILITIES, MESSAGES, SCHEDULES } from '@/config';
+import { BUSES, CAPABILITIES, COMMONS, MESSAGES, SCHEDULES } from '@/config';
 import { BusService } from '@/features/buses';
+import db from '@/lib/db';
 
-const adapter = new FileSync('db.json');
-const db = low(adapter);
-
-const arrivalText = '도착';
-const noneText = '없음';
-const blankText = '-';
-const commons = {
-  arrival: 0,
-  [arrivalText]: 0,
-  noBus: -1,
-  [noneText]: -1,
-  blank: -999,
-  [blankText]: -999,
-} as const;
-
-const stopNames = {} as Dictionary;
+import * as app from './helpers/app';
+import * as time from './utils/time';
 
 export async function handleOn(ctx: SmartAppContext): Promise<void> {
-  const { cityNumber, stopCode, routeCodes } = getConfig(ctx);
+  const { cityNumber, stopCode, routeCodes } = app.getConfig(ctx);
   const arrivalInfo = await retrieveArrivalInfo(cityNumber, stopCode, routeCodes);
 
   if (typeof arrivalInfo === 'string') {
-    return sendError(ctx, arrivalInfo);
+    return app.sendError(ctx, arrivalInfo);
   }
 
-  const firstArrivalTime = arrivalInfo.buses[0].arrivalTime;
-  const secondArrivalTime = arrivalInfo.buses[1]?.arrivalTime ?? commons.noBus;
-  const arrivalTimes = [firstArrivalTime, secondArrivalTime] as const;
-  const deviceId = getNotifier(ctx).deviceConfig?.deviceId as string;
-
-  db.set(`${deviceId}.arrivalInfo`, arrivalTimes).value();
-  db.set(`${deviceId}.errorCount`, 0).value();
-  db.write();
-  stopNames[deviceId] = arrivalInfo.stop.name;
-
-  const { notificationInterval } = await getPreferences(ctx, deviceId);
+  const deviceId = app.getNotifier(ctx).deviceConfig?.deviceId as string;
+  const arrivalTimes = app.saveArrivalInfo(deviceId, arrivalInfo);
+  const { notificationInterval } = await app.getPreferences(ctx, deviceId);
 
   await Promise.all([
-    sendTimes(ctx, ...arrivalTimes),
-    sendNotifications(ctx, ...arrivalTimes),
+    app.sendTimes(ctx, ...arrivalTimes),
+    app.sendNotifications(ctx, ...arrivalTimes),
     ctx.api.schedules.schedule(SCHEDULES.update, `0/1 * * * ? *`, 'UTC'),
     ctx.api.schedules.schedule(
       SCHEDULES.notifications,
@@ -60,14 +33,6 @@ export async function handleOn(ctx: SmartAppContext): Promise<void> {
   ]);
 
   return undefined;
-}
-
-function getConfig(ctx: SmartAppContext) {
-  return {
-    cityNumber: ctx.configNumberValue('cityNumber'),
-    stopCode: ctx.configStringValue('stopCode'),
-    routeCodes: ctx.configStringValue('routeCodes').split(','),
-  };
 }
 
 async function retrieveArrivalInfo(cityNumber: number, stopCode: string, routeCodes: string[]) {
@@ -108,80 +73,6 @@ function toErrorMessage(statusCode: number) {
   }
 }
 
-async function sendError(ctx: SmartAppContext, message: string, forced = true) {
-  if (!forced) {
-    const key = `${getNotifier(ctx).deviceConfig?.deviceId}.errorCount`;
-    const errorCount = db.get(key).value();
-
-    if (!errorCount) {
-      return db.set(key, errorCount + 1).write();
-    }
-  }
-
-  await Promise.all([sendSwitchOff(ctx), sendAlerts(ctx, message)]);
-
-  return undefined;
-}
-
-export function getNotifier(ctx: SmartAppContext): st.ConfigEntry {
-  return ctx.config.notifier[0];
-}
-
-async function sendSwitchOff(ctx: SmartAppContext) {
-  await ctx.api.devices.sendCommand(getNotifier(ctx), [toSwitchOffCommand()]);
-}
-
-function toSwitchOffCommand() {
-  return {
-    capability: 'switch',
-    command: 'off',
-  };
-}
-
-async function sendAlerts(ctx: SmartAppContext, message: string) {
-  await Promise.all([sendMessage(ctx, message), sendSpeech(ctx, message)]);
-}
-
-async function sendMessage(ctx: SmartAppContext, message: string) {
-  await ctx.api.devices.sendCommand(getNotifier(ctx), [toMessageCommand(message)], '');
-}
-
-function toMessageCommand(message: string) {
-  return {
-    capability: CAPABILITIES.statusMessage,
-    command: 'setMessage',
-    arguments: [message],
-  };
-}
-
-async function sendSpeech(ctx: SmartAppContext, phrase: string) {
-  if (ctx.config.speakers) {
-    await ctx.api.devices.sendCommands(ctx.config.speakers, [toSpeakCommand(phrase)], '');
-  }
-}
-
-function toSpeakCommand(phrase: string) {
-  return {
-    capability: CAPABILITIES.speechSynthesis,
-    command: 'speak',
-    arguments: [phrase],
-  };
-}
-
-async function getPreferences(ctx: SmartAppContext, deviceId: string) {
-  const preferences = await extractPreferences(ctx, deviceId);
-
-  return {
-    notificationInterval: preferences.notificationInterval.value || 3,
-  };
-}
-
-async function extractPreferences(ctx: SmartAppContext, deviceId: string) {
-  const preferences = await ctx.api.devices.getPreferences(deviceId);
-
-  return preferences.values as Types.Preferences;
-}
-
 export async function handleOff(ctx: SmartAppContext): Promise<void> {
   await ctx.api.schedules.delete();
 }
@@ -193,225 +84,147 @@ export async function handleUpdate(ctx: SmartAppContext): Promise<void> {
     includeStatus: true,
   });
 
-  const attributes = getAttributes(notifier);
+  const attributes = app.getAttributes(notifier);
 
   if (!attributes) {
-    return sendError(ctx, MESSAGES.error);
+    return app.sendError(ctx, MESSAGES.error);
   }
 
   const { firstRemainingTime, secondRemainingTime } = attributes;
-  const displayedFirstTime = commons[firstRemainingTime] ?? toSeconds(firstRemainingTime);
-  const displayedSecondTime = commons[secondRemainingTime] ?? toSeconds(secondRemainingTime);
+  const firstDisplayedTime = COMMONS[firstRemainingTime] ?? time.toSeconds(firstRemainingTime);
+  const secondDisplayedTime = COMMONS[secondRemainingTime] ?? time.toSeconds(secondRemainingTime);
 
-  const { cityNumber, stopCode, routeCodes } = getConfig(ctx);
+  const { cityNumber, stopCode, routeCodes } = app.getConfig(ctx);
   const arrivalInfo = await retrieveArrivalInfo(cityNumber, stopCode, routeCodes);
 
   if (typeof arrivalInfo === 'string') {
-    return sendError(ctx, arrivalInfo, false);
+    return app.sendError(ctx, arrivalInfo, false);
   }
 
   const firstArrivalTime = arrivalInfo.buses[0].arrivalTime;
-  const secondArrivalTime = arrivalInfo.buses[1]?.arrivalTime ?? commons.noBus;
-  const lastUpdatedTime = extractUpdatedTime(attributes.statusMessage);
+  const secondArrivalTime = arrivalInfo.buses[1]?.arrivalTime ?? COMMONS.noBus;
+  const lastUpdatedTime = time.extractUpdatedTime(attributes.statusMessage);
 
   if (!lastUpdatedTime) {
-    return sendError(ctx, MESSAGES.error);
+    return app.sendError(ctx, MESSAGES.error);
   }
-  if (displayedFirstTime < commons.arrival) {
-    return sendError(ctx, MESSAGES.busAlreadyArrived);
+  if (firstDisplayedTime < COMMONS.arrival) {
+    return app.sendError(ctx, MESSAGES.busAlreadyArrived);
   }
 
   const key = `${notifier.deviceId}.arrivalInfo`;
-  const [savedFirstTime, savedSecondTime] = db.get(key).value();
-  const elapsedTime = getElapsedTime(lastUpdatedTime);
+  const [firstSavedTime, secondSavedTime] = db.get(key).value();
+  const arrivalInfoUpdated =
+    firstSavedTime !== firstArrivalTime || secondSavedTime !== secondArrivalTime;
+
+  const elapsedTime = time.getElapsedTime(lastUpdatedTime);
   const thresholdTime = BUSES.thresholdTime - 1 * MINUTE_IN_SECONDS;
   const possibleArrivalTime = 3 * MINUTE_IN_SECONDS;
 
   // Run if the first bus has already arrived.
-  if (displayedFirstTime === commons.arrival) {
-    if (displayedSecondTime < 1) {
-      return sendError(ctx, MESSAGES.busAlreadyArrived);
+  if (firstDisplayedTime === COMMONS.arrival) {
+    if (secondDisplayedTime < 1) {
+      return app.sendError(ctx, MESSAGES.busAlreadyArrived);
     }
-
-    const arrivalInfoUpdated = savedSecondTime !== firstArrivalTime;
-
     if (!arrivalInfoUpdated) {
-      const remainingTime = displayedSecondTime - elapsedTime;
+      const remainingTime = secondDisplayedTime - elapsedTime;
 
       if (remainingTime < 1) {
-        return sendError(ctx, MESSAGES.busArrived);
+        return app.sendError(ctx, MESSAGES.busArrived);
       }
 
-      return sendTimes(ctx, commons.arrival, remainingTime);
+      return app.sendTimes(ctx, COMMONS.arrival, remainingTime);
     }
-    if (firstArrivalTime - displayedSecondTime >= thresholdTime) {
-      const error = displayedSecondTime < possibleArrivalTime ? 'busAlreadyArrived' : 'busMissing';
+    if (firstArrivalTime - secondDisplayedTime >= thresholdTime) {
+      const error = secondDisplayedTime < possibleArrivalTime ? 'busAlreadyArrived' : 'busMissing';
 
-      return sendError(ctx, MESSAGES[error]);
+      return app.sendError(ctx, MESSAGES[error]);
     }
 
     db.set(key, [firstArrivalTime, secondArrivalTime]).write();
 
-    return sendTimes(ctx, commons.arrival, firstArrivalTime);
+    return app.sendTimes(ctx, COMMONS.arrival, firstArrivalTime);
   }
-
-  const arrivalInfoUpdated = savedFirstTime !== firstArrivalTime;
-
   // Run if the first bus has not arrived.
-  if (displayedSecondTime === commons.noBus) {
+  if (secondDisplayedTime === COMMONS.noBus) {
     if (!arrivalInfoUpdated) {
-      const remainingTime = displayedFirstTime - elapsedTime;
+      const remainingTime = firstDisplayedTime - elapsedTime;
 
       if (remainingTime < 1) {
-        return sendError(ctx, MESSAGES.busArrived);
+        return app.sendError(ctx, MESSAGES.busArrived);
       }
 
-      return sendTimes(ctx, remainingTime, secondArrivalTime);
+      return app.sendTimes(ctx, remainingTime, secondArrivalTime);
     }
-    if (firstArrivalTime - displayedFirstTime >= thresholdTime) {
-      const error = displayedFirstTime < possibleArrivalTime ? 'busAlreadyArrived' : 'busMissing';
+    if (firstArrivalTime - firstDisplayedTime >= thresholdTime) {
+      const error = firstDisplayedTime < possibleArrivalTime ? 'busAlreadyArrived' : 'busMissing';
 
-      return sendError(ctx, MESSAGES[error]);
+      return app.sendError(ctx, MESSAGES[error]);
     }
 
     db.set(key, [firstArrivalTime, secondArrivalTime]).write();
 
-    return sendTimes(ctx, firstArrivalTime, secondArrivalTime);
+    return app.sendTimes(ctx, firstArrivalTime, secondArrivalTime);
   }
   // Run if neither the first nor the second bus has arrived.
-  if (displayedSecondTime > commons.arrival) {
+  if (secondDisplayedTime > COMMONS.arrival) {
     if (!arrivalInfoUpdated) {
-      const remainingFirstTime = displayedFirstTime - elapsedTime;
-      const remainingSecondTime = displayedSecondTime - elapsedTime;
+      const remainingFirstTime = firstDisplayedTime - elapsedTime;
+      const remainingSecondTime = secondDisplayedTime - elapsedTime;
 
       if (remainingFirstTime < 1) {
         if (remainingSecondTime < 1) {
-          return sendError(ctx, MESSAGES.busArrived);
+          return app.sendError(ctx, MESSAGES.busArrived);
         }
 
-        return sendTimes(ctx, commons.arrival, remainingSecondTime);
+        return app.sendTimes(ctx, COMMONS.arrival, remainingSecondTime);
       }
 
-      return sendTimes(ctx, remainingFirstTime, remainingSecondTime);
+      return app.sendTimes(ctx, remainingFirstTime, remainingSecondTime);
     }
 
     db.set(key, [firstArrivalTime, secondArrivalTime]).write();
 
-    if (firstArrivalTime - displayedFirstTime >= thresholdTime) {
-      if (firstArrivalTime - displayedSecondTime >= thresholdTime) {
+    if (firstArrivalTime - firstDisplayedTime >= thresholdTime) {
+      if (firstArrivalTime - secondDisplayedTime >= thresholdTime) {
         const error =
-          displayedSecondTime < possibleArrivalTime ? 'busAlreadyArrived' : 'busMissing';
+          secondDisplayedTime < possibleArrivalTime ? 'busAlreadyArrived' : 'busMissing';
 
-        return sendError(ctx, MESSAGES[error]);
+        return app.sendError(ctx, MESSAGES[error]);
       }
 
-      return sendTimes(ctx, commons.arrival, firstArrivalTime);
+      return app.sendTimes(ctx, COMMONS.arrival, firstArrivalTime);
     }
     // TODO: Add error handling.
-    if (displayedFirstTime < possibleArrivalTime) {
-      if (firstArrivalTime < displayedFirstTime) {
-        if (secondArrivalTime - displayedSecondTime >= thresholdTime) {
-          return sendTimes(ctx, commons.arrival, firstArrivalTime);
+    if (firstDisplayedTime < possibleArrivalTime) {
+      if (firstArrivalTime < firstDisplayedTime) {
+        if (secondArrivalTime - secondDisplayedTime >= thresholdTime) {
+          return app.sendTimes(ctx, COMMONS.arrival, firstArrivalTime);
         }
-      } else if (firstArrivalTime < displayedSecondTime) {
+      } else if (firstArrivalTime < secondDisplayedTime) {
         if (
-          secondArrivalTime - displayedSecondTime >= thresholdTime &&
-          displayedSecondTime - firstArrivalTime < thresholdTime
+          secondArrivalTime - secondDisplayedTime >= thresholdTime &&
+          secondDisplayedTime - firstArrivalTime < thresholdTime
         ) {
-          return sendTimes(ctx, commons.arrival, firstArrivalTime);
+          return app.sendTimes(ctx, COMMONS.arrival, firstArrivalTime);
         }
       } else {
-        if (firstArrivalTime - displayedSecondTime >= thresholdTime) {
-          return sendError(ctx, MESSAGES.busAlreadyArrived);
+        if (firstArrivalTime - secondDisplayedTime >= thresholdTime) {
+          return app.sendError(ctx, MESSAGES.busAlreadyArrived);
         }
         if (
-          secondArrivalTime - displayedSecondTime >= 1 * MINUTE_IN_SECONDS ||
-          displayedFirstTime < 2 * MINUTE_IN_SECONDS
+          secondArrivalTime - secondDisplayedTime >= 1 * MINUTE_IN_SECONDS ||
+          firstDisplayedTime < 2 * MINUTE_IN_SECONDS
         ) {
-          return sendTimes(ctx, commons.arrival, firstArrivalTime);
+          return app.sendTimes(ctx, COMMONS.arrival, firstArrivalTime);
         }
       }
     }
 
-    return sendTimes(ctx, firstArrivalTime, secondArrivalTime);
+    return app.sendTimes(ctx, firstArrivalTime, secondArrivalTime);
   }
 
-  return sendError(ctx, MESSAGES.busMissing);
-}
-
-function getAttributes(device: st.Device) {
-  const capabilities = device.components?.[0].capabilities.reduce(
-    (acc, capability) => object.assign(acc, capability.id, capability.status),
-    {} as Types.Capabilities,
-  );
-
-  return (
-    capabilities && {
-      firstRemainingTime:
-        (capabilities[CAPABILITIES.firstRemainingTime].remainingTime.value as CommonCodeType) || '',
-      secondRemainingTime:
-        (capabilities[CAPABILITIES.secondRemainingTime].remainingTime.value as CommonCodeType) ||
-        '',
-      statusMessage: (capabilities[CAPABILITIES.statusMessage].message.value as string) || '',
-    }
-  );
-}
-
-type CommonCodeType = keyof typeof commons & string;
-
-const timeFormat = /(?<minutes>\d+(?=분))?\D*(?<seconds>\d+(?=초))/;
-
-function toSeconds(time: string): number {
-  const matches = timeFormat.exec(time);
-  const minutes = matches?.groups?.minutes ?? 0;
-  const seconds = matches?.groups?.seconds ?? 0;
-
-  return +minutes * 60 + +seconds;
-}
-
-const statusFormat = /\d{2}:\d{2}:\d{2}/;
-
-function extractUpdatedTime(status: string) {
-  const match = status.match(statusFormat);
-
-  return match && moment.utc(match[0], 'HH:mm:ss').subtract(9, 'hours');
-}
-
-function getElapsedTime(pastTime: moment.Moment) {
-  return Math.trunc(moment.utc().diff(pastTime) / SECOND_IN_MS);
-}
-
-async function sendTimes(ctx: SmartAppContext, firstTime: number, secondTime: number) {
-  await ctx.api.devices.sendCommand(getNotifier(ctx), [
-    ...toTimeCommands(firstTime, secondTime),
-    toMessageCommand(`${moment.utc().utcOffset('+09:00').format('HH:mm:ss')} 기준`),
-  ]);
-}
-
-function toTimeCommands(firstSeconds: number, secondSeconds: number) {
-  return [
-    {
-      capability: CAPABILITIES.firstRemainingTime,
-      command: 'setTime',
-      arguments: [toRemainingTime(firstSeconds)],
-    },
-    {
-      capability: CAPABILITIES.secondRemainingTime,
-      command: 'setTime',
-      arguments: [toRemainingTime(secondSeconds)],
-    },
-  ];
-}
-
-function toRemainingTime(seconds: number) {
-  if (seconds > 0) {
-    return formatTime(seconds);
-  }
-  if (!seconds) {
-    return arrivalText;
-  }
-
-  return seconds === commons.noBus ? noneText : blankText;
+  return app.sendError(ctx, MESSAGES.busMissing);
 }
 
 export async function handleNotifications(ctx: SmartAppContext): Promise<void> {
@@ -420,60 +233,15 @@ export async function handleNotifications(ctx: SmartAppContext): Promise<void> {
     includeStatus: true,
   });
 
-  const attributes = getAttributes(notifier);
+  const attributes = app.getAttributes(notifier);
 
   if (!attributes) {
-    return sendError(ctx, MESSAGES.error);
+    return app.sendError(ctx, MESSAGES.error);
   }
 
   const { firstRemainingTime, secondRemainingTime } = attributes;
-  const displayedFirstTime = commons[firstRemainingTime] ?? toSeconds(firstRemainingTime);
-  const displayedSecondTime = commons[secondRemainingTime] ?? toSeconds(secondRemainingTime);
+  const displayedFirstTime = COMMONS[firstRemainingTime] ?? time.toSeconds(firstRemainingTime);
+  const displayedSecondTime = COMMONS[secondRemainingTime] ?? time.toSeconds(secondRemainingTime);
 
-  return sendNotifications(ctx, displayedFirstTime, displayedSecondTime);
-}
-
-async function sendNotifications(ctx: SmartAppContext, firstTime: number, secondTime: number) {
-  const stopName = stopNames[`${getNotifier(ctx).deviceConfig?.deviceId}`] ?? '';
-  const commands = [sendSpeech(ctx, toArrivalMessage(firstTime, secondTime, stopName))];
-
-  if (firstTime <= BUSES.minTime && firstTime > 0) {
-    commands.push(sendButtonPush(ctx));
-  } else if (secondTime <= BUSES.minTime && secondTime > 0) {
-    commands.push(sendButtonPush(ctx, true));
-  }
-
-  await Promise.all(commands);
-}
-
-function toArrivalMessage(firstSeconds: number, secondSeconds: number, stopName: string) {
-  const firstTime = toArrivalTime(firstSeconds);
-  const firstMessage = firstTime && `첫 번째 버스가 ${firstTime} 후 도착`;
-  const secondTime = toArrivalTime(secondSeconds);
-  const secondMessage = secondTime && `두 번째 버스가 ${secondTime} 후 도착`;
-  const comma = ', ';
-  const delimiter = firstMessage && secondMessage && comma;
-
-  return `${stopName}${stopName && comma}${firstMessage}${delimiter}${secondMessage} 예정입니다`;
-}
-
-function toArrivalTime(seconds: number) {
-  if (seconds <= 0) {
-    return '';
-  }
-
-  return seconds > BUSES.minTime ? formatTime(seconds) : '잠시';
-}
-
-function formatTime(seconds: number) {
-  return moment.utc(seconds * SECOND_IN_MS).format('m[분] s[초]');
-}
-
-async function sendButtonPush(ctx: SmartAppContext, double = false) {
-  await ctx.api.devices.sendCommand(
-    getNotifier(ctx),
-    CAPABILITIES.notificationButton,
-    'setButton',
-    [double ? 'double' : 'pushed'],
-  );
+  return app.sendNotifications(ctx, displayedFirstTime, displayedSecondTime);
 }
