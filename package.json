@@ -1,6 +1,6 @@
 {
   "name": "st-bus-arrival-notifier",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "SmartApp for SmartThings that sends bus arrival notifications",
   "main": "dist/index.js",
   "repository": "https://github.com/taglist/st-bus-arrival-notifier.git",

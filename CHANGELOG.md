@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.2.0](https://github.com/taglist/st-bus-arrival-notifier/compare/v1.1.0...v1.2.0) (2023-04-21)
+
+
+### Features
+
+* **smartapp:** add notification button value ([dead0a5](https://github.com/taglist/st-bus-arrival-notifier/commit/dead0a5ed183ee7d6f30a3e4130429da38c05eb2))
+* **smartapp:** make stop name optional ([a17ddb1](https://github.com/taglist/st-bus-arrival-notifier/commit/a17ddb1203a979780e616a698d869ee2d6a91852))
+
+
+### Bug Fixes
+
+* **smartapp:** modify time limit higher ([9022255](https://github.com/taglist/st-bus-arrival-notifier/commit/902225593d3ba7b3d46afcc553b544de57dc8d63))
+
 ## [1.1.0](https://github.com/taglist/st-bus-arrival-notifier/compare/v1.0.0...v1.1.0) (2023-04-21)
 
 
