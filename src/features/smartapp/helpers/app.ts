@@ -32,12 +32,14 @@ export async function getPreferences(ctx: SmartAppContext, deviceId: string): Pr
 
   return {
     notificationInterval: preferences.notificationInterval.value || 3,
+    stopNameRequired: preferences.stopNameRequired.value,
     routeNumberRequired: preferences.routeNumberRequired.value,
   };
 }
 
 interface Preferences {
   notificationInterval: number;
+  stopNameRequired: boolean;
   routeNumberRequired: boolean;
 }
 
@@ -52,7 +54,7 @@ export function hasRouteNumber(deviceId: string): boolean {
 export function initializeData(
   deviceId: string,
   arrivalInfo: Types.StopArrivalInfo,
-  routeNumberRequired: boolean,
+  options: { stopNameRequired: boolean; routeNumberRequired: boolean },
 ): readonly [number, number] {
   const firstArrivalTime = arrivalInfo.buses[0].arrivalTime;
   const secondArrivalTime = arrivalInfo.buses[1]?.arrivalTime ?? COMMONS.noBus;
@@ -61,10 +63,10 @@ export function initializeData(
   db.set(`${deviceId}.arrivalInfo`, arrivalTimes).value();
   db.set(`${deviceId}.errorCount`, 0).value();
   db.write();
-  stopNames[deviceId] = arrivalInfo.stop.name;
+  stopNames[deviceId] = options.stopNameRequired ? arrivalInfo.stop.name : '';
   routeNumbers[deviceId] = [null, null];
 
-  if (routeNumberRequired) {
+  if (options.routeNumberRequired) {
     saveRouteNumbers(deviceId, arrivalInfo.buses);
   }
 
@@ -245,12 +247,12 @@ function toArrivalMessage(
   routes: ReadonlyArray<string | null>,
 ) {
   const firstTime = toArrivalTime(firstSeconds);
-  const firstName = routes[0] || '첫 번째';
+  const firstName = routes[0] ? `${routes[0]}번` : '첫 번째';
   const firstMessage = firstTime && `${firstName} 버스가 ${firstTime} 후 도착`;
 
   const secondTime = toArrivalTime(secondSeconds);
   const secondNumber = firstTime ? routes[1] : routes[0] || routes[1];
-  const secondName = secondNumber || '두 번째';
+  const secondName = secondNumber ? `${secondNumber}번` : '두 번째';
   const secondMessage = secondTime && `${secondName} 버스가 ${secondTime} 후 도착`;
 
   const comma = ', ';

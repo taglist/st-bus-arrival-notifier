@@ -18,8 +18,8 @@ export async function handleOn(ctx: SmartAppContext): Promise<void> {
   }
 
   const deviceId = app.getNotifier(ctx).deviceConfig?.deviceId as string;
-  const { notificationInterval, routeNumberRequired } = await app.getPreferences(ctx, deviceId);
-  const arrivalTimes = app.initializeData(deviceId, arrivalInfo, routeNumberRequired);
+  const { notificationInterval, ...options } = await app.getPreferences(ctx, deviceId);
+  const arrivalTimes = app.initializeData(deviceId, arrivalInfo, options);
 
   await Promise.all([
     app.sendTimes(ctx, ...arrivalTimes),
