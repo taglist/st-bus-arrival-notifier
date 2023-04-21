@@ -264,7 +264,10 @@ function toArrivalMessage(
   const comma = ', ';
   const delimiter = firstMessage && secondMessage && comma;
 
-  return `${stopName}${stopName && comma}${firstMessage}${delimiter}${secondMessage} 예정입니다`;
+  return (
+    (firstMessage || secondMessage) &&
+    `${stopName}${stopName && comma}${firstMessage}${delimiter}${secondMessage} 예정입니다`
+  );
 }
 
 function toArrivalTime(seconds: number) {
