@@ -250,9 +250,9 @@ export async function handleNotifications(ctx: SmartAppContext): Promise<void> {
     return app.sendError(ctx, MESSAGES.error);
   }
 
-  const { firstRemainingTime, secondRemainingTime } = attributes;
+  const { firstRemainingTime, secondRemainingTime, notificationButton } = attributes;
   const displayedFirstTime = COMMONS[firstRemainingTime] ?? time.toSeconds(firstRemainingTime);
   const displayedSecondTime = COMMONS[secondRemainingTime] ?? time.toSeconds(secondRemainingTime);
 
-  return app.sendNotifications(ctx, displayedFirstTime, displayedSecondTime);
+  return app.sendNotifications(ctx, displayedFirstTime, displayedSecondTime, notificationButton);
 }

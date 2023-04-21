@@ -556,6 +556,7 @@ function toUpdateCase(
       firstRemainingTime: toRemainingTime(displayedTimes[0]),
       secondRemainingTime: toRemainingTime(displayedTimes[1]),
       statusMessage: '00:00:00 기준',
+      notificationButton: 'ready' as app.ButtonStatusType,
     },
     arrivalInfo: [
       { arrivalTime: arrivalTimes[0], ...mocks.baseArrivalInfo },

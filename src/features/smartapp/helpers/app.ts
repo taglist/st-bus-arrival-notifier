@@ -112,16 +112,21 @@ export function getAttributes(device: st.Device): Attributes | undefined {
         (capabilities[CAPABILITIES.secondRemainingTime].remainingTime.value as CommonCodeType) ||
         '',
       statusMessage: (capabilities[CAPABILITIES.statusMessage].message.value as string) || '',
+      notificationButton:
+        (capabilities[CAPABILITIES.notificationButton].button.value as ButtonStatusType) || '',
     }
   );
 }
 
 export type CommonCodeType = keyof typeof COMMONS & string;
 
+export type ButtonStatusType = 'ready' | 'pushed' | 'double';
+
 interface Attributes {
   firstRemainingTime: CommonCodeType;
   secondRemainingTime: CommonCodeType;
   statusMessage: string;
+  notificationButton: ButtonStatusType;
 }
 
 export async function sendError(
@@ -225,15 +230,16 @@ export async function sendNotifications(
   ctx: SmartAppContext,
   firstTime: number,
   secondTime: number,
+  buttonStatus = 'ready',
 ): Promise<void> {
   const deviceId = getNotifier(ctx).deviceConfig?.deviceId as string;
   const stopName = stopNames[deviceId] ?? '';
   const routes = routeNumbers[deviceId] ?? [null, null];
   const commands = [sendSpeech(ctx, toArrivalMessage(firstTime, secondTime, stopName, routes))];
 
-  if (firstTime <= BUSES.minTime && firstTime > 0) {
+  if (firstTime <= BUSES.minTime && buttonStatus === 'ready') {
     commands.push(sendButtonPush(ctx));
-  } else if (secondTime <= BUSES.minTime && secondTime > 0) {
+  } else if (secondTime <= BUSES.minTime && buttonStatus !== 'double') {
     commands.push(sendButtonPush(ctx, true));
   }
 
