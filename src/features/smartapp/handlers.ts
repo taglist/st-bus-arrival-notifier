@@ -18,8 +18,8 @@ export async function handleOn(ctx: SmartAppContext): Promise<void> {
   }
 
   const deviceId = app.getNotifier(ctx).deviceConfig?.deviceId as string;
-  const arrivalTimes = app.saveArrivalInfo(deviceId, arrivalInfo);
-  const { notificationInterval } = await app.getPreferences(ctx, deviceId);
+  const { notificationInterval, routeNumberRequired } = await app.getPreferences(ctx, deviceId);
+  const arrivalTimes = app.initializeData(deviceId, arrivalInfo, routeNumberRequired);
 
   await Promise.all([
     app.sendTimes(ctx, ...arrivalTimes),
@@ -93,16 +93,6 @@ export async function handleUpdate(ctx: SmartAppContext): Promise<void> {
   const { firstRemainingTime, secondRemainingTime } = attributes;
   const firstDisplayedTime = COMMONS[firstRemainingTime] ?? time.toSeconds(firstRemainingTime);
   const secondDisplayedTime = COMMONS[secondRemainingTime] ?? time.toSeconds(secondRemainingTime);
-
-  const { cityNumber, stopCode, routeCodes } = app.getConfig(ctx);
-  const arrivalInfo = await retrieveArrivalInfo(cityNumber, stopCode, routeCodes);
-
-  if (typeof arrivalInfo === 'string') {
-    return app.sendError(ctx, arrivalInfo, false);
-  }
-
-  const firstArrivalTime = arrivalInfo.buses[0].arrivalTime;
-  const secondArrivalTime = arrivalInfo.buses[1]?.arrivalTime ?? COMMONS.noBus;
   const lastUpdatedTime = time.extractUpdatedTime(attributes.statusMessage);
 
   if (!lastUpdatedTime) {
@@ -112,10 +102,26 @@ export async function handleUpdate(ctx: SmartAppContext): Promise<void> {
     return app.sendError(ctx, MESSAGES.busAlreadyArrived);
   }
 
+  const { cityNumber, stopCode, routeCodes } = app.getConfig(ctx);
+  const arrivalInfo = await retrieveArrivalInfo(cityNumber, stopCode, routeCodes);
+
+  if (typeof arrivalInfo === 'string') {
+    return app.sendError(ctx, arrivalInfo, false);
+  }
+
+  const routeNumberRequired = app.hasRouteNumber(notifier.deviceId);
+
+  if (routeNumberRequired) {
+    app.saveRouteNumbers(notifier.deviceId, arrivalInfo.buses);
+  }
+
+  const firstArrivalTime = arrivalInfo.buses[0].arrivalTime;
+  const secondArrivalTime = arrivalInfo.buses[1]?.arrivalTime ?? COMMONS.noBus;
+
   const key = `${notifier.deviceId}.arrivalInfo`;
   const [firstSavedTime, secondSavedTime] = db.get(key).value();
   const arrivalInfoUpdated =
-    firstSavedTime !== firstArrivalTime || secondSavedTime !== secondArrivalTime;
+    firstArrivalTime !== firstSavedTime || secondArrivalTime !== secondSavedTime;
 
   const elapsedTime = time.getElapsedTime(lastUpdatedTime);
   const thresholdTime = BUSES.thresholdTime - 1 * MINUTE_IN_SECONDS;
@@ -175,6 +181,11 @@ export async function handleUpdate(ctx: SmartAppContext): Promise<void> {
       if (remainingFirstTime < 1) {
         if (remainingSecondTime < 1) {
           return app.sendError(ctx, MESSAGES.busArrived);
+        }
+        if (routeNumberRequired) {
+          const newArrivalInfo = [{ ...arrivalInfo.buses[0], name: '' }, arrivalInfo.buses[1]];
+
+          app.saveRouteNumbers(notifier.deviceId, newArrivalInfo);
         }
 
         return app.sendTimes(ctx, COMMONS.arrival, remainingSecondTime);

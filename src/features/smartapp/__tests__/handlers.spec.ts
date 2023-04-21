@@ -428,6 +428,10 @@ describe('handleUpdate', () => {
     });
 
     describe('and the arrival information has not been updated', () => {
+      beforeAll(() => {
+        db.set(arrivalInfoKey, [0, 0]).write();
+      });
+
       it.each([
         { displayedTimes: [419, 559], results: [419 - mocks.elapsedTime, 559 - mocks.elapsedTime] },
         { displayedTimes: [235, 287], results: [235 - mocks.elapsedTime, 287 - mocks.elapsedTime] },

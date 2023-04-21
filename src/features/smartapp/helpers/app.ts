@@ -32,18 +32,27 @@ export async function getPreferences(ctx: SmartAppContext, deviceId: string): Pr
 
   return {
     notificationInterval: preferences.notificationInterval.value || 3,
+    routeNumberRequired: preferences.routeNumberRequired.value,
   };
 }
 
 interface Preferences {
   notificationInterval: number;
+  routeNumberRequired: boolean;
 }
 
 const stopNames = {} as Dictionary;
 
-export function saveArrivalInfo(
+export const routeNumbers = {} as Dictionary;
+
+export function hasRouteNumber(deviceId: string): boolean {
+  return routeNumbers[deviceId][0] || routeNumbers[deviceId][1];
+}
+
+export function initializeData(
   deviceId: string,
   arrivalInfo: Types.StopArrivalInfo,
+  routeNumberRequired: boolean,
 ): readonly [number, number] {
   const firstArrivalTime = arrivalInfo.buses[0].arrivalTime;
   const secondArrivalTime = arrivalInfo.buses[1]?.arrivalTime ?? COMMONS.noBus;
@@ -53,8 +62,32 @@ export function saveArrivalInfo(
   db.set(`${deviceId}.errorCount`, 0).value();
   db.write();
   stopNames[deviceId] = arrivalInfo.stop.name;
+  routeNumbers[deviceId] = [null, null];
+
+  if (routeNumberRequired) {
+    saveRouteNumbers(deviceId, arrivalInfo.buses);
+  }
 
   return arrivalTimes;
+}
+
+export function saveRouteNumbers(deviceId: string, arrivalInfo: Types.BusArrivalInfo[]): void {
+  const firstRouteNumber = extractRouteNumber(arrivalInfo[0].name);
+  const secondRouteNumber = extractRouteNumber(arrivalInfo[1]?.name);
+
+  routeNumbers[deviceId] = [firstRouteNumber, secondRouteNumber];
+}
+
+const routeNameFormat = /^[^(]+/;
+
+function extractRouteNumber(name: string) {
+  if (!name) {
+    return '';
+  }
+
+  const result = name.match(routeNameFormat)?.[0];
+
+  return result ? result.trim() : '';
 }
 
 async function extractPreferences(ctx: SmartAppContext, deviceId: string) {
@@ -191,8 +224,10 @@ export async function sendNotifications(
   firstTime: number,
   secondTime: number,
 ): Promise<void> {
-  const stopName = stopNames[`${getNotifier(ctx).deviceConfig?.deviceId}`] ?? '';
-  const commands = [sendSpeech(ctx, toArrivalMessage(firstTime, secondTime, stopName))];
+  const deviceId = getNotifier(ctx).deviceConfig?.deviceId as string;
+  const stopName = stopNames[deviceId] ?? '';
+  const routes = routeNumbers[deviceId] ?? [null, null];
+  const commands = [sendSpeech(ctx, toArrivalMessage(firstTime, secondTime, stopName, routes))];
 
   if (firstTime <= BUSES.minTime && firstTime > 0) {
     commands.push(sendButtonPush(ctx));
@@ -203,11 +238,21 @@ export async function sendNotifications(
   await Promise.all(commands);
 }
 
-function toArrivalMessage(firstSeconds: number, secondSeconds: number, stopName: string) {
+function toArrivalMessage(
+  firstSeconds: number,
+  secondSeconds: number,
+  stopName: string,
+  routes: ReadonlyArray<string | null>,
+) {
   const firstTime = toArrivalTime(firstSeconds);
-  const firstMessage = firstTime && `첫 번째 버스가 ${firstTime} 후 도착`;
+  const firstName = routes[0] || '첫 번째';
+  const firstMessage = firstTime && `${firstName} 버스가 ${firstTime} 후 도착`;
+
   const secondTime = toArrivalTime(secondSeconds);
-  const secondMessage = secondTime && `두 번째 버스가 ${secondTime} 후 도착`;
+  const secondNumber = firstTime ? routes[1] : routes[0] || routes[1];
+  const secondName = secondNumber || '두 번째';
+  const secondMessage = secondTime && `${secondName} 버스가 ${secondTime} 후 도착`;
+
   const comma = ', ';
   const delimiter = firstMessage && secondMessage && comma;
 
