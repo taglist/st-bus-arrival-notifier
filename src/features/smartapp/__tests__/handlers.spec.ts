@@ -358,6 +358,7 @@ describe('handleUpdate', () => {
         { displayedTimes: [173, 328], arrivalTimes: [381, 401] },
         { displayedTimes: [115, 259], arrivalTimes: [302, 1639] },
         { displayedTimes: [79, 192], arrivalTimes: [298, 1529] },
+        { displayedTimes: [77, 281], arrivalTimes: [132, 1056] },
         { displayedTimes: [14, 183], arrivalTimes: [235, 257] },
         { displayedTimes: [158, 1059], arrivalTimes: [158 + thresholdTime, 987] },
         { displayedTimes: [75, 1059], arrivalTimes: [75 + thresholdTime, 987] },

@@ -215,7 +215,7 @@ export async function handleUpdate(ctx: SmartAppContext): Promise<void> {
       } else if (firstArrivalTime < secondDisplayedTime) {
         if (
           secondArrivalTime - secondDisplayedTime >= thresholdTime &&
-          secondDisplayedTime - firstArrivalTime < thresholdTime
+          secondDisplayedTime - firstArrivalTime < thresholdTime + 1 * MINUTE_IN_SECONDS
         ) {
           return app.sendTimes(ctx, COMMONS.arrival, firstArrivalTime);
         }
