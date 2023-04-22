@@ -1,13 +1,15 @@
 import type * as st from '@smartthings/core-sdk';
 import type { SmartAppContext } from '@smartthings/smartapp';
-import type { Dictionary } from '@taglist/types';
 import moment from 'moment';
-import { object } from 'ryutils';
 
 import { BUSES, CAPABILITIES, COMMONS, MESSAGES } from '@/config';
 import db from '@/lib/db';
 
 import * as time from '../utils/time';
+
+export function getDeviceId(ctx: SmartAppContext): string {
+  return getNotifier(ctx).deviceConfig?.deviceId as string;
+}
 
 export function getNotifier(ctx: SmartAppContext): st.ConfigEntry {
   return ctx.config.notifier[0];
@@ -43,41 +45,55 @@ interface Preferences {
   routeNumberRequired: boolean;
 }
 
-const stopNames = {} as Dictionary;
+async function extractPreferences(ctx: SmartAppContext, deviceId: string) {
+  const preferences = await ctx.api.devices.getPreferences(deviceId);
 
-export const routeNumbers = {} as Dictionary;
-
-export function hasRouteNumber(deviceId: string): boolean {
-  return routeNumbers[deviceId][0] || routeNumbers[deviceId][1];
+  return preferences.values as Types.Preferences;
 }
 
-export function initializeData(
+export function initializeStates(
   deviceId: string,
   arrivalInfo: Types.StopArrivalInfo,
-  options: { stopNameRequired: boolean; routeNumberRequired: boolean },
+  options: Preferences,
 ): readonly [number, number] {
-  const firstArrivalTime = arrivalInfo.buses[0].arrivalTime;
-  const secondArrivalTime = arrivalInfo.buses[1]?.arrivalTime ?? COMMONS.noBus;
+  const { buses } = arrivalInfo;
+  const firstArrivalTime = buses[0].arrivalTime;
+  const secondArrivalTime = buses[1]?.arrivalTime ?? COMMONS.noBus;
   const arrivalTimes = [firstArrivalTime, secondArrivalTime] as const;
+  const initialStates = {
+    arrivalTimes,
+    progress: Infinity,
+    errorCount: 0,
+    stopName: options.stopNameRequired ? arrivalInfo.stop.name : '',
+    routeNumbers: options.routeNumberRequired ? extractRouteNumbers(buses) : ['', ''],
+    buttonStatus: 'ready',
+    notificationInterval: options.notificationInterval,
+  };
 
-  db.set(`${deviceId}.arrivalInfo`, arrivalTimes).value();
-  db.set(`${deviceId}.errorCount`, 0).value();
-  db.write();
-  stopNames[deviceId] = options.stopNameRequired ? arrivalInfo.stop.name : '';
-  routeNumbers[deviceId] = [null, null];
-
-  if (options.routeNumberRequired) {
-    saveRouteNumbers(deviceId, arrivalInfo.buses);
-  }
+  db.set(deviceId, initialStates).write();
 
   return arrivalTimes;
 }
 
-export function saveRouteNumbers(deviceId: string, arrivalInfo: Types.BusArrivalInfo[]): void {
+interface DeviceStates {
+  progress: number;
+  errorCount: number;
+  stopName: string;
+  routeNumbers: string[];
+  arrivalTimes: [number, number];
+  remainingTimes: [number, number];
+  updatedTime: number;
+  buttonStatus: ButtonStatusType;
+  notificationInterval: number;
+}
+
+export type ButtonStatusType = 'ready' | 'pushed' | 'double';
+
+function extractRouteNumbers(arrivalInfo: Types.BusArrivalInfo[]) {
   const firstRouteNumber = extractRouteNumber(arrivalInfo[0].name);
   const secondRouteNumber = extractRouteNumber(arrivalInfo[1]?.name);
 
-  routeNumbers[deviceId] = [firstRouteNumber, secondRouteNumber];
+  return [firstRouteNumber, secondRouteNumber];
 }
 
 const routeNameFormat = /^[^(]+/;
@@ -92,41 +108,32 @@ function extractRouteNumber(name: string) {
   return result ? result.trim() : '';
 }
 
-async function extractPreferences(ctx: SmartAppContext, deviceId: string) {
-  const preferences = await ctx.api.devices.getPreferences(deviceId);
+export function hasRouteNumber(deviceId: string): boolean {
+  const routeNumbers = db.get(`${deviceId}.routeNumbers`).value();
 
-  return preferences.values as Types.Preferences;
+  return !!(routeNumbers[0] || routeNumbers[1]);
 }
 
-export function getAttributes(device: st.Device): Attributes | undefined {
-  const capabilities = device.components?.[0].capabilities.reduce(
-    (acc, capability) => object.assign(acc, capability.id, capability.status),
-    {} as Types.Capabilities,
-  );
-
-  return (
-    capabilities && {
-      firstRemainingTime:
-        (capabilities[CAPABILITIES.firstRemainingTime].remainingTime.value as CommonCodeType) || '',
-      secondRemainingTime:
-        (capabilities[CAPABILITIES.secondRemainingTime].remainingTime.value as CommonCodeType) ||
-        '',
-      statusMessage: (capabilities[CAPABILITIES.statusMessage].message.value as string) || '',
-      notificationButton:
-        (capabilities[CAPABILITIES.notificationButton].button.value as ButtonStatusType) || '',
-    }
-  );
+export function saveRouteNumbers(deviceId: string, arrivalInfo: Types.BusArrivalInfo[]): void {
+  db.set(`${deviceId}.routeNumbers`, extractRouteNumbers(arrivalInfo)).write();
 }
 
-export type CommonCodeType = keyof typeof COMMONS & string;
+export function getAttributes(deviceId: string): Attributes {
+  const device = db.get(deviceId).value() as DeviceStates;
 
-export type ButtonStatusType = 'ready' | 'pushed' | 'double';
+  return {
+    firstDisplayedTime: device.remainingTimes[0],
+    secondDisplayedTime: device.remainingTimes[1],
+    lastUpdatedTime: device.updatedTime,
+    buttonStatus: device.buttonStatus,
+  };
+}
 
 interface Attributes {
-  firstRemainingTime: CommonCodeType;
-  secondRemainingTime: CommonCodeType;
-  statusMessage: string;
-  notificationButton: ButtonStatusType;
+  firstDisplayedTime: number;
+  secondDisplayedTime: number;
+  lastUpdatedTime: number;
+  buttonStatus: ButtonStatusType;
 }
 
 export async function sendError(
@@ -135,7 +142,7 @@ export async function sendError(
   forced = true,
 ): Promise<void> {
   if (!forced) {
-    const key = `${getNotifier(ctx).deviceConfig?.deviceId}.errorCount`;
+    const key = `${getDeviceId(ctx)}.errorCount`;
     const errorCount = db.get(key).value();
 
     if (!errorCount) {
@@ -191,12 +198,22 @@ function toSpeakCommand(phrase: string) {
 
 export async function sendTimes(
   ctx: SmartAppContext,
-  firstTime: number,
-  secondTime: number,
+  firstSeconds: number,
+  secondSeconds: number,
 ): Promise<void> {
-  await ctx.api.devices.sendCommand(getNotifier(ctx), [
-    ...toTimeCommands(firstTime, secondTime),
-    toMessageCommand(`${moment.utc().utcOffset('+09:00').format('HH:mm:ss')} 기준`),
+  const deviceId = getDeviceId(ctx);
+  const now = Date.now();
+
+  db.set(`${deviceId}.updatedTime`, now).value();
+  db.set(`${deviceId}.remainingTimes`, [firstSeconds, secondSeconds]).value();
+  db.write();
+
+  await Promise.all([
+    ctx.api.devices.sendCommand(getNotifier(ctx), [
+      ...toTimeCommands(firstSeconds, secondSeconds),
+      toMessageCommand(`${moment.utc(now).utcOffset('+09:00').format('HH:mm:ss')} 기준`),
+    ]),
+    ensureNotifications(ctx, firstSeconds, secondSeconds),
   ]);
 }
 
@@ -205,62 +222,72 @@ function toTimeCommands(firstSeconds: number, secondSeconds: number) {
     {
       capability: CAPABILITIES.firstRemainingTime,
       command: 'setTime',
-      arguments: [toRemainingTime(firstSeconds)],
+      arguments: [toFormattedTime(firstSeconds)],
     },
     {
       capability: CAPABILITIES.secondRemainingTime,
       command: 'setTime',
-      arguments: [toRemainingTime(secondSeconds)],
+      arguments: [toFormattedTime(secondSeconds)],
     },
   ];
 }
 
-function toRemainingTime(seconds: number) {
+function toFormattedTime(seconds: number) {
   if (seconds > 0) {
     return time.formatTime(seconds);
   }
-  if (!seconds) {
+  if (seconds === 0) {
     return MESSAGES.arrival;
   }
 
   return seconds === COMMONS.noBus ? MESSAGES.none : MESSAGES.blank;
 }
 
-export async function sendNotifications(
+async function ensureNotifications(
   ctx: SmartAppContext,
-  firstTime: number,
-  secondTime: number,
-  buttonStatus = 'ready',
-): Promise<void> {
-  const deviceId = getNotifier(ctx).deviceConfig?.deviceId as string;
-  const stopName = stopNames[deviceId] ?? '';
-  const routes = routeNumbers[deviceId] ?? [null, null];
-  const commands = [sendSpeech(ctx, toArrivalMessage(firstTime, secondTime, stopName, routes))];
-
-  if (firstTime <= BUSES.minTime && buttonStatus === 'ready') {
-    commands.push(sendButtonPush(ctx));
-  } else if (secondTime <= BUSES.minTime && buttonStatus !== 'double') {
-    commands.push(sendButtonPush(ctx, true));
-  }
-
-  await Promise.all(commands);
-}
-
-function toArrivalMessage(
   firstSeconds: number,
   secondSeconds: number,
-  stopName: string,
-  routes: ReadonlyArray<string | null>,
 ) {
-  const firstTime = toArrivalTime(firstSeconds);
-  const firstName = routes[0] ? `${routes[0]}번` : '첫 번째';
-  const firstMessage = firstTime && `${firstName} 버스가 ${firstTime} 후 도착`;
+  const deviceId = getDeviceId(ctx);
+  const device = db.get(deviceId).value() as DeviceStates;
+  const progress = device.progress + 1;
 
-  const secondTime = toArrivalTime(secondSeconds);
-  const secondNumber = firstTime ? routes[1] : routes[0] || routes[1];
-  const secondName = secondNumber ? `${secondNumber}번` : '두 번째';
-  const secondMessage = secondTime && `${secondName} 버스가 ${secondTime} 후 도착`;
+  if (progress < device.notificationInterval) {
+    db.set(`${deviceId}.progress`, progress).write();
 
+    return Promise.resolve();
+  }
+
+  db.set(`${deviceId}.progress`, 0).value();
+
+  const options = {
+    firstSeconds,
+    secondSeconds,
+    stopName: device.stopName,
+    routeNumbers: device.routeNumbers,
+  };
+
+  const commands = [sendSpeech(ctx, toNotificationMessage(options))];
+
+  if (firstSeconds <= BUSES.minTime && device.buttonStatus === 'ready') {
+    db.set(`${deviceId}.buttonStatus`, 'pushed').value();
+    commands.push(sendButtonStatus(ctx, 'pushed'));
+  } else if (secondSeconds <= BUSES.minTime && device.buttonStatus !== 'double') {
+    db.set(`${deviceId}.buttonStatus`, 'double').value();
+    commands.push(sendButtonStatus(ctx, 'double'));
+  }
+
+  db.write();
+  await Promise.all(commands);
+
+  return undefined;
+}
+
+function toNotificationMessage(options: NotificationOptions) {
+  const { routeNumbers, stopName } = options;
+  const firstMessage = toArrivalMessage(options.firstSeconds, routeNumbers[0], 0);
+  const routeNumber = firstMessage ? routeNumbers[1] : routeNumbers[0] || routeNumbers[1];
+  const secondMessage = toArrivalMessage(options.secondSeconds, routeNumber, 1);
   const comma = ', ';
   const delimiter = firstMessage && secondMessage && comma;
 
@@ -268,6 +295,20 @@ function toArrivalMessage(
     (firstMessage || secondMessage) &&
     `${stopName}${stopName && comma}${firstMessage}${delimiter}${secondMessage} 예정입니다`
   );
+}
+
+interface NotificationOptions extends Pick<DeviceStates, 'stopName' | 'routeNumbers'> {
+  firstSeconds: number;
+  secondSeconds: number;
+}
+
+const ordinals = ['첫 번째', '두 번째'];
+
+function toArrivalMessage(seconds: number, routeNumber: string, order: number) {
+  const arrivalTime = toArrivalTime(seconds);
+  const busName = routeNumber ? `${routeNumber}번` : ordinals[order];
+
+  return arrivalTime && `${busName} 버스가 ${arrivalTime} 후 도착`;
 }
 
 function toArrivalTime(seconds: number) {
@@ -278,11 +319,11 @@ function toArrivalTime(seconds: number) {
   return seconds > BUSES.minTime ? time.formatTime(seconds) : '잠시';
 }
 
-async function sendButtonPush(ctx: SmartAppContext, double = false) {
+async function sendButtonStatus(ctx: SmartAppContext, status: ButtonStatusType) {
   await ctx.api.devices.sendCommand(
     getNotifier(ctx),
     CAPABILITIES.notificationButton,
     'setButton',
-    [double ? 'double' : 'pushed'],
+    [status],
   );
 }

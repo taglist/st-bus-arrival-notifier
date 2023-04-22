@@ -2,7 +2,7 @@ import type { SmartAppContext } from '@smartthings/smartapp';
 import { MINUTE_IN_SECONDS, STATUS_CODES } from '@taglist/constants';
 import * as errors from '@taglist/errors';
 
-import { BUSES, CAPABILITIES, COMMONS, MESSAGES, SCHEDULES } from '@/config';
+import { BUSES, COMMONS, MESSAGES, SCHEDULES } from '@/config';
 import { BusService } from '@/features/buses';
 import db from '@/lib/db';
 
@@ -17,19 +17,13 @@ export async function handleOn(ctx: SmartAppContext): Promise<void> {
     return app.sendError(ctx, arrivalInfo);
   }
 
-  const deviceId = app.getNotifier(ctx).deviceConfig?.deviceId as string;
-  const { notificationInterval, ...options } = await app.getPreferences(ctx, deviceId);
-  const arrivalTimes = app.initializeData(deviceId, arrivalInfo, options);
+  const deviceId = app.getDeviceId(ctx);
+  const preferences = await app.getPreferences(ctx, deviceId);
+  const arrivalTimes = app.initializeStates(deviceId, arrivalInfo, preferences);
 
   await Promise.all([
     app.sendTimes(ctx, ...arrivalTimes),
-    app.sendNotifications(ctx, ...arrivalTimes),
     ctx.api.schedules.schedule(SCHEDULES.update, `0/1 * * * ? *`, 'UTC'),
-    ctx.api.schedules.schedule(
-      SCHEDULES.notifications,
-      `0/${notificationInterval} * * * ? *`,
-      'UTC',
-    ),
   ]);
 
   return undefined;
@@ -79,27 +73,11 @@ export async function handleOff(ctx: SmartAppContext): Promise<void> {
 
 // eslint-disable-next-line sonarjs/cognitive-complexity
 export async function handleUpdate(ctx: SmartAppContext): Promise<void> {
-  const [notifier] = await ctx.api.devices.list({
-    capability: [CAPABILITIES.firstRemainingTime, CAPABILITIES.secondRemainingTime],
-    includeStatus: true,
-  });
-
-  const attributes = app.getAttributes(notifier);
-
-  if (!attributes) {
-    return app.sendError(ctx, MESSAGES.error);
-  }
-
-  const { firstRemainingTime, secondRemainingTime } = attributes;
-  const firstDisplayedTime = COMMONS[firstRemainingTime] ?? time.toSeconds(firstRemainingTime);
-  const secondDisplayedTime = COMMONS[secondRemainingTime] ?? time.toSeconds(secondRemainingTime);
-  const lastUpdatedTime = time.extractUpdatedTime(attributes.statusMessage);
+  const deviceId = app.getDeviceId(ctx);
+  const { firstDisplayedTime, secondDisplayedTime, lastUpdatedTime } = app.getAttributes(deviceId);
 
   if (!lastUpdatedTime) {
     return app.sendError(ctx, MESSAGES.error);
-  }
-  if (firstDisplayedTime < COMMONS.arrival) {
-    return app.sendError(ctx, MESSAGES.busAlreadyArrived);
   }
 
   const { cityNumber, stopCode, routeCodes } = app.getConfig(ctx);
@@ -109,22 +87,22 @@ export async function handleUpdate(ctx: SmartAppContext): Promise<void> {
     return app.sendError(ctx, arrivalInfo, false);
   }
 
-  const routeNumberRequired = app.hasRouteNumber(notifier.deviceId);
+  const routeNumberRequired = app.hasRouteNumber(deviceId);
 
   if (routeNumberRequired) {
-    app.saveRouteNumbers(notifier.deviceId, arrivalInfo.buses);
+    app.saveRouteNumbers(deviceId, arrivalInfo.buses);
   }
 
   const firstArrivalTime = arrivalInfo.buses[0].arrivalTime;
   const secondArrivalTime = arrivalInfo.buses[1]?.arrivalTime ?? COMMONS.noBus;
 
-  const key = `${notifier.deviceId}.arrivalInfo`;
+  const key = `${deviceId}.arrivalTimes`;
   const [firstSavedTime, secondSavedTime] = db.get(key).value();
   const arrivalInfoUpdated =
     firstArrivalTime !== firstSavedTime || secondArrivalTime !== secondSavedTime;
 
   const elapsedTime = time.getElapsedTime(lastUpdatedTime);
-  const thresholdTime = BUSES.thresholdTime - 1 * MINUTE_IN_SECONDS;
+  const thresholdTime = BUSES.thresholdTime - MINUTE_IN_SECONDS;
   const possibleArrivalTime = 3 * MINUTE_IN_SECONDS;
 
   // Run if the first bus has already arrived.
@@ -175,23 +153,23 @@ export async function handleUpdate(ctx: SmartAppContext): Promise<void> {
   // Run if neither the first nor the second bus has arrived.
   if (secondDisplayedTime > COMMONS.arrival) {
     if (!arrivalInfoUpdated) {
-      const remainingFirstTime = firstDisplayedTime - elapsedTime;
-      const remainingSecondTime = secondDisplayedTime - elapsedTime;
+      const firstRemainingTime = firstDisplayedTime - elapsedTime;
+      const secondRemainingTime = secondDisplayedTime - elapsedTime;
 
-      if (remainingFirstTime < 1) {
-        if (remainingSecondTime < 1) {
+      if (firstRemainingTime < 1) {
+        if (secondRemainingTime < 1) {
           return app.sendError(ctx, MESSAGES.busArrived);
         }
         if (routeNumberRequired) {
           const newArrivalInfo = [{ ...arrivalInfo.buses[0], name: '' }, arrivalInfo.buses[1]];
 
-          app.saveRouteNumbers(notifier.deviceId, newArrivalInfo);
+          app.saveRouteNumbers(deviceId, newArrivalInfo);
         }
 
-        return app.sendTimes(ctx, COMMONS.arrival, remainingSecondTime);
+        return app.sendTimes(ctx, COMMONS.arrival, secondRemainingTime);
       }
 
-      return app.sendTimes(ctx, remainingFirstTime, remainingSecondTime);
+      return app.sendTimes(ctx, firstRemainingTime, secondRemainingTime);
     }
 
     db.set(key, [firstArrivalTime, secondArrivalTime]).write();
@@ -236,23 +214,4 @@ export async function handleUpdate(ctx: SmartAppContext): Promise<void> {
   }
 
   return app.sendError(ctx, MESSAGES.busMissing);
-}
-
-export async function handleNotifications(ctx: SmartAppContext): Promise<void> {
-  const [notifier] = await ctx.api.devices.list({
-    capability: [CAPABILITIES.firstRemainingTime, CAPABILITIES.secondRemainingTime],
-    includeStatus: true,
-  });
-
-  const attributes = app.getAttributes(notifier);
-
-  if (!attributes) {
-    return app.sendError(ctx, MESSAGES.error);
-  }
-
-  const { firstRemainingTime, secondRemainingTime, notificationButton } = attributes;
-  const displayedFirstTime = COMMONS[firstRemainingTime] ?? time.toSeconds(firstRemainingTime);
-  const displayedSecondTime = COMMONS[secondRemainingTime] ?? time.toSeconds(secondRemainingTime);
-
-  return app.sendNotifications(ctx, displayedFirstTime, displayedSecondTime, notificationButton);
 }

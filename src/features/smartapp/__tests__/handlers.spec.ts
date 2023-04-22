@@ -1,5 +1,4 @@
 import { MINUTE_IN_SECONDS } from '@taglist/constants';
-import moment from 'moment';
 import { random } from 'ryutils';
 
 import { BUSES, MESSAGES } from '@/config';
@@ -15,27 +14,26 @@ jest.mock('@/features/buses');
 jest.mock('../helpers/app');
 jest.mock('../utils/time', () => ({
   ...jest.requireActual('../utils/time'),
-  extractUpdatedTime: jest.fn(),
   getElapsedTime: jest.fn(),
 }));
 
 const mockBusService = BusService as jest.Mocked<typeof BusService>;
 const mockApp = app as jest.Mocked<typeof app>;
 const mockTime = time as jest.Mocked<typeof time>;
-
-const arrivalInfoKey = `${mocks.deviceId}.arrivalInfo`;
 const thresholdTime = BUSES.thresholdTime - 1 * MINUTE_IN_SECONDS;
 
 beforeEach(() => {
+  mockApp.getDeviceId.mockReturnValue(mocks.deviceId);
   mockApp.getConfig.mockReturnValue(mocks.config);
-  mockTime.extractUpdatedTime.mockReturnValue(moment.utc());
   mockTime.getElapsedTime.mockReturnValue(mocks.elapsedTime);
 });
 
 describe('handleUpdate', () => {
+  const key = `${mocks.deviceId}.arrivalTimes`;
+
   describe('when the first bus has already arrived', () => {
     beforeAll(() => {
-      db.set(arrivalInfoKey, [0, 0]).write();
+      db.set(key, [0, 0]).write();
     });
 
     // * and the arrival information has been updated
@@ -117,7 +115,7 @@ describe('handleUpdate', () => {
 
       const arrivalTimes = [arrivalInfo[0].arrivalTime, arrivalInfo[1].arrivalTime];
 
-      db.set(arrivalInfoKey, arrivalTimes).write();
+      db.set(key, arrivalTimes).write();
 
       await handlers.handleUpdate(mocks.ctx);
 
@@ -138,7 +136,7 @@ describe('handleUpdate', () => {
 
       const arrivalTimes = [arrivalInfo[0].arrivalTime, arrivalInfo[1].arrivalTime];
 
-      db.set(arrivalInfoKey, arrivalTimes).write();
+      db.set(key, arrivalTimes).write();
 
       await handlers.handleUpdate(mocks.ctx);
 
@@ -148,7 +146,7 @@ describe('handleUpdate', () => {
 
   describe('when the first bus has not arrived', () => {
     beforeAll(() => {
-      db.set(arrivalInfoKey, [0, 0]).write();
+      db.set(key, [0, 0]).write();
     });
 
     // * and the arrival information has been updated
@@ -233,7 +231,7 @@ describe('handleUpdate', () => {
         arrivalInfo[1] ? arrivalInfo[1].arrivalTime : -1,
       ];
 
-      db.set(arrivalInfoKey, arrivalTimes).write();
+      db.set(key, arrivalTimes).write();
 
       await handlers.handleUpdate(mocks.ctx);
 
@@ -257,7 +255,7 @@ describe('handleUpdate', () => {
         arrivalInfo[1] ? arrivalInfo[1].arrivalTime : -1,
       ];
 
-      db.set(arrivalInfoKey, arrivalTimes).write();
+      db.set(key, arrivalTimes).write();
 
       await handlers.handleUpdate(mocks.ctx);
 
@@ -267,7 +265,7 @@ describe('handleUpdate', () => {
 
   describe('when neither the first nor the second bus has arrived', () => {
     beforeAll(() => {
-      db.set(arrivalInfoKey, [0, 0]).write();
+      db.set(key, [0, 0]).write();
     });
 
     // * when the remaining time of the first bus is more than the available time
@@ -430,7 +428,7 @@ describe('handleUpdate', () => {
 
     describe('and the arrival information has not been updated', () => {
       beforeAll(() => {
-        db.set(arrivalInfoKey, [0, 0]).write();
+        db.set(key, [0, 0]).write();
       });
 
       it.each([
@@ -553,22 +551,14 @@ function toUpdateCase(
   return {
     results,
     attributes: {
-      firstRemainingTime: toRemainingTime(displayedTimes[0]),
-      secondRemainingTime: toRemainingTime(displayedTimes[1]),
-      statusMessage: '00:00:00 기준',
-      notificationButton: 'ready' as app.ButtonStatusType,
+      firstDisplayedTime: displayedTimes[0],
+      secondDisplayedTime: displayedTimes[1],
+      lastUpdatedTime: Date.now(),
+      buttonStatus: 'ready' as app.ButtonStatusType,
     },
     arrivalInfo: [
       { arrivalTime: arrivalTimes[0], ...mocks.baseArrivalInfo },
       ...(arrivalTimes[1] >= 0 ? [{ arrivalTime: arrivalTimes[1], ...mocks.baseArrivalInfo }] : []),
     ],
   };
-}
-
-function toRemainingTime(seconds: number) {
-  if (seconds > 0) {
-    return time.formatTime(seconds) as app.CommonCodeType;
-  }
-
-  return !seconds ? MESSAGES.arrival : MESSAGES.none;
 }

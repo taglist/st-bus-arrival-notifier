@@ -8,7 +8,6 @@ export const CAPABILITIES = {
 
 export const SCHEDULES = {
   update: 'update',
-  notifications: 'notifications',
 } as const;
 
 export const MESSAGES = {

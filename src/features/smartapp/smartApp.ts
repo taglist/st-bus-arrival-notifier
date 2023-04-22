@@ -52,7 +52,6 @@ const smartApp = new SmartApp()
   })
   .subscribedEventHandler('onHandler', handlers.handleOn)
   .subscribedEventHandler('offHandler', handlers.handleOff)
-  .scheduledEventHandler(SCHEDULES.update, handlers.handleUpdate)
-  .scheduledEventHandler(SCHEDULES.notifications, handlers.handleNotifications);
+  .scheduledEventHandler(SCHEDULES.update, handlers.handleUpdate);
 
 export default smartApp;
