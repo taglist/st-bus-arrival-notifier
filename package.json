@@ -11,6 +11,7 @@
     "dev": "tsnd --respawn -T -r tsconfig-paths/register --ignore-watch node_modules --exit-child src/index.ts",
     "start": "NODE_ENV=production node dist/index.js",
     "build": "babel src -d dist -x .ts",
+    "postbuild": "node scripts/removeDevDeps.js",
     "clean": "rimraf dist",
     "release": "standard-version",
     "check": "tsc",
